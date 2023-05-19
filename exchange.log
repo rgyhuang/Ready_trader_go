@@ -2052,3 +2052,8 @@
 2023-05-19 18:34:05,149 [INFO   ] [COMPETITOR] 'TraderOne' closing execution channel at time=83.984000
 2023-05-19 18:34:05,149 [INFO   ] [CONNECTION] fd=1032 connection lost
 2023-05-19 18:35:03,165 [INFO   ] [COMPETITOR] Unhedged lots timer expired for TraderOne at etf=-10 fut=110 rel=100
+2023-05-19 18:47:37,627 [INFO   ] [MARKET_EVENTS] reader thread complete after processing 461484 market events
+2023-05-19 18:47:41,212 [INFO   ] [TIMER] shutting down the match: time=900.047000 reason='match complete'
+2023-05-19 18:47:41,213 [INFO   ] [MATCH_EVENTS] writer thread complete after processing 461569 match events
+2023-05-19 18:47:41,215 [INFO   ] [SCORE_BOARD] writer thread complete after processing 3604 score records
+2023-05-19 18:47:41,215 [INFO   ] [APP] closing event loop
