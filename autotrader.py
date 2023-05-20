@@ -39,10 +39,6 @@ delta = 0.1 #Amount by which we increase/decrease our bid/ask (min possible pric
 # Therefore, our B spread should always be greater or equal to (A_spread + 2 * pillow) 
 pillow = 0.1 
 k = 2
-
-sleep_time = 0.1
-
-
 class AutoTrader(BaseAutoTrader):
     """Example Auto-trader.
 
@@ -66,6 +62,8 @@ class AutoTrader(BaseAutoTrader):
         self.bestVolumeF = [0, 0]
         self.bids = set()
         self.asks = set()
+        self.bidsF = set()
+        self.asksF = set()
         self.FutureOrderBookBid = []
         self.FutureOrderBookAsk = []
         self.ETFOrderBookBid  = []
@@ -84,11 +82,13 @@ class AutoTrader(BaseAutoTrader):
 
     def delete_outstanding_ordersETF (self, side):
         """Delete outstanding orders that have not been filled yet"""
-        if (side == Side.ASKS):
-            for (id, i) in (self.asks):
+        print("deleted")
+
+        if (side == Side.ASK):
+            for (id) in self.asks:
                     self.send_cancel_order(id)
         else:
-            for (id, i) in (self.bids):
+            for (id) in self.bids:
                     self.send_cancel_order(id)
         
 
@@ -112,6 +112,7 @@ class AutoTrader(BaseAutoTrader):
             self.bestVolumeF[1] = ask_volumes[ask_prices.index(max(ask_prices))]
             self.FutureOrderBookBid = zip(bid_prices, bid_volumes)
             self.FutureOrderBookAsk = zip (ask_prices, ask_volumes) 
+
             if (self.bestPriceETF[0] != 0):
                 print("Calculate trade entered")
                 bid_update = ask_update = False
@@ -144,24 +145,25 @@ class AutoTrader(BaseAutoTrader):
                     # self.delete_outstanding_ordersETF(Side.BID)
                     # new order
                     self.bid_id = next(self.order_ids)
-                    self.send_insert_order(self.bid_id, Side.BUY, int(self.bidETF), LOT_SIZE, Lifespan.GOOD_FOR_DAY)
+                    self.send_insert_order(self.bid_id, Side.BUY,   int(self.bidETF), LOT_SIZE, Lifespan.GOOD_FOR_DAY)
                     self.bids.add(self.bid_id)
                     print("bid trade")
+
                 # check for inbalance in positions. If we have an inbalance, hedge in liquid market (future)
                 total_position = self.position_E + self.position_F
                 desired_volume = abs(total_position)
-
-                # hedge orders are fill and kill. Avoids bidding in liquid market at unfavorable prices
 
                 # if our position is positive, sell in futures (meeting a bid)
                 if (total_position > 0):
                     self.ask_id = next(self.order_ids)
                     self.send_hedge_order(self.ask_id, Side.ASK, self.bestPriceF[1], desired_volume)
+                    print("hedge ask")
                 
                 # if our position is negative, buy in futures (meeting an ask)
                 if (total_position < 0):
                     self.bid_id = next(self.order_ids)
                     self.send_hedge_order(self.bid_id, Side.BID, self.bestPriceF[0], desired_volume)
+                    print("hedge bid")
 
         elif instrument == Instrument.ETF:
             print("ETF entered")
@@ -176,7 +178,7 @@ class AutoTrader(BaseAutoTrader):
                 has_outstanding_bids = (len(self.bids) != 0)
                 has_outstanding_asks = (len(self.asks) != 0)
 
-                # if our bid/asks haven't gone through, 
+                # if our bid/asks haven't been processed, 
                 # increase spread by decreasing/increasing bids and asks respectively
 
                 if (not has_outstanding_bids):
@@ -186,7 +188,7 @@ class AutoTrader(BaseAutoTrader):
                     self.askETF += delta *k
 
                 if self.position_E > 0 and self.position_F < 0:  
-                    # We check all possible ask prices, and sell our B so long as the sale is profitable
+                    # We check all possible ask prices, and sell our ETF (ETF bid) so long as the sale is profitable (higher than future ask)
                     i = 0
                     while self.bestPriceETF[0] >= self.FutureOrderBookAsk[i][0] and i < len(self.FutureOrderBookAsk):
                         # We try to sell ALL B
@@ -198,28 +200,28 @@ class AutoTrader(BaseAutoTrader):
                         self.ask_id = next(self.order_ids)
                         self.bid_id = next(self.order_ids)
                         self.send_insert_order(self.ask_id, Side.ASK, self.bestPriceETF[0], new_volume, Lifespan.FILL_AND_KILL)
-                        self.send_hedge_order(self.bid_id, Side.BID, self.FutureOrderBookAsk[i][0], new_volume, Lifespan.FILL_AND_KILL)
-                            
+                        self.send_hedge_order(self.bid_id, Side.BID, self.FutureOrderBookAsk[i][0], new_volume)
+                        print("hedged bid")
                         i +=1
-                # If we currently have NEGATIVE B positions, we look to unwind by buying B
+
+                # If we currently have negative ETF positions, we can unwind and balance by buying ETFs
                 if self.position_E < 0 and self.position_F > 0:
                     
-                    # To unwind, we need to BUY B
-                    # So we desire the price we buy B (B ASK) to be lower than the price we can sell A (bid A)
+                    # Find a price to buy ETF (ETF ASK) to be lower than the price we can sell it for in futures (F BID)
                     i = 0 
 
                     while self.bestPriceETF[1] <= self.FutureOrderBookBid[i][0] and i < len(self.FutureOrderBookBid):
                         position_ETF = self.position_E
                         position_F = self.position_F
-                        # We try to buy ALL B
+                        # We try to buy ALL ETF
                         new_volume = min(abs(self.ETFOrderBookAsk[0][1]), abs(self.FutureOrderBookAsk[i][1]), abs(position_ETF), abs(position_F))  # best price
                         if new_volume <= 0: # Prevent impossible orders
                             break
                         self.ask_id = next(self.order_ids)
                         self.bid_id = next(self.order_ids)
                         self.send_insert_order(self.bid_id, Side.BID, self.bestPriceETF[1], new_volume, Lifespan.FILL_AND_KILL)
-                        self.send_hedge_order(self.ask_id, Side.ASK, self.FutureOrderBookBid[i][0], new_volume, Lifespan.FILL_AND_KILL)
-                        
+                        self.send_hedge_order(self.ask_id, Side.ASK, self.FutureOrderBookBid[i][0], new_volume)
+                        print("hedged ask")
                         i+=1
 
 
@@ -232,6 +234,17 @@ class AutoTrader(BaseAutoTrader):
         """
         self.logger.info("received hedge filled for order %d with average price %d and volume %d", client_order_id,
                          price, volume)
+        if client_order_id in self.bidsF:
+            self.position_F += volume
+        elif client_order_id in self.asksF:
+            self.position_F -= volume
+
+        if self.position_F < 0 and self.bid_id != 0:
+            self.send_hedge_order(next(self.order_ids), Side.BID, MAX_ASK_NEAREST_TICK, volume)
+        elif self.position_F > 0 and self.ask_id != 0:
+            self.send_hedge_order(next(self.order_ids), Side.ASK, MIN_BID_NEAREST_TICK, volume)
+
+        
 
     def on_order_filled_message(self, client_order_id: int, price: int, volume: int) -> None:
         """Called when one of your orders is filled, partially or fully.
